@@ -1,0 +1,186 @@
+#include <SFML/Graphics.hpp>
+#include <iostream>
+#include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <stack>
+#include <vector>
+#include <queue>
+
+using namespace std;
+
+enum Cell {
+    WALL,
+    PATH
+};
+
+struct Position {
+    int x, y;
+};
+
+vector<vector<Cell>> maze;
+int WIDTH = 20;
+int HEIGHT = 20;
+int CELL_SIZE = 40;
+Position startPos = { 1, 1 };
+float moveDelay = 0.5f;
+
+void initializeMaze() {
+    maze.resize(WIDTH, vector<Cell>(HEIGHT, WALL));
+}
+
+vector<Position> getNeighbors(Position pos) {
+    vector<Position> neighbors;
+
+    if (pos.x > 1 && maze[pos.x - 2][pos.y] == WALL)
+        neighbors.push_back({ pos.x - 2, pos.y });
+    if (pos.x < WIDTH - 2 && maze[pos.x + 2][pos.y] == WALL)
+        neighbors.push_back({ pos.x + 2, pos.y });
+    if (pos.y > 1 && maze[pos.x][pos.y - 2] == WALL)
+        neighbors.push_back({ pos.x, pos.y - 2 });
+    if (pos.y < HEIGHT - 2 && maze[pos.x][pos.y + 2] == WALL)
+        neighbors.push_back({ pos.x, pos.y + 2 });
+
+    return neighbors;
+}
+
+void makePath() {
+    stack<Position> stack;
+    stack.push(startPos);
+    maze[startPos.x][startPos.y] = PATH;
+
+    while (!stack.empty()) {
+        Position current = stack.top();
+        vector<Position> neighbors = getNeighbors(current);
+
+        if (!neighbors.empty()) {
+            Position next = neighbors[rand() % neighbors.size()];
+            maze[next.x][next.y] = PATH;
+            maze[(current.x + next.x) / 2][(current.y + next.y) / 2] = PATH;
+            stack.push(next);
+        } else {
+            stack.pop();
+        }
+    }
+
+    // Entry and exit
+    maze[startPos.x][startPos.y - 1] = PATH;
+    maze[WIDTH - 2][HEIGHT - 1] = PATH;
+}
+
+void drawMaze(sf::RenderWindow& window) {
+    for (int x = 0; x < WIDTH; ++x) {
+        for (int y = 0; y < HEIGHT; ++y) {
+            sf::RectangleShape cell(sf::Vector2f(CELL_SIZE, CELL_SIZE));
+            cell.setPosition(x * CELL_SIZE, y * CELL_SIZE);
+            cell.setFillColor(maze[x][y] == WALL ? sf::Color::White : sf::Color::Black);
+            window.draw(cell);
+        }
+    }
+}
+
+vector<Position> createPath() {
+    vector<Position> path;
+    queue<Position> q;
+    vector<vector<bool>> visited(WIDTH, vector<bool>(HEIGHT, false));
+    vector<vector<Position>> parent(WIDTH, vector<Position>(HEIGHT));
+
+    q.push({ startPos.x, startPos.y - 1 });
+    visited[startPos.x][startPos.y - 1] = true;
+
+    while (!q.empty()) {
+        Position current = q.front();
+        q.pop();
+
+        if (current.x == WIDTH - 2 && current.y == HEIGHT - 1)
+            break;
+
+        vector<Position> neighbors = {
+            { current.x + 1, current.y },
+            { current.x - 1, current.y },
+            { current.x, current.y + 1 },
+            { current.x, current.y - 1 }
+        };
+
+        for (Position next : neighbors) {
+            if (next.x >= 0 && next.x < WIDTH && next.y >= 0 && next.y < HEIGHT &&
+                maze[next.x][next.y] == PATH && !visited[next.x][next.y]) {
+                q.push(next);
+                visited[next.x][next.y] = true;
+                parent[next.x][next.y] = current;
+            }
+        }
+    }
+
+    Position current = { WIDTH - 2, HEIGHT - 1 };
+    while (!(current.x == startPos.x && current.y == startPos.y - 1)) {
+        path.push_back(current);
+        current = parent[current.x][current.y];
+    }
+    path.push_back({ startPos.x, startPos.y - 1 });
+    reverse(path.begin(), path.end());
+
+    return path;
+}
+
+void handleInput() {
+    cout << "Enter maze width (min 5): ";
+    cin >> WIDTH;
+    WIDTH = max(5, WIDTH);
+
+    cout << "Enter maze height (min 5): ";
+    cin >> HEIGHT;
+    HEIGHT = max(5, HEIGHT);
+
+    cout << "Enter cell size (min 5): ";
+    cin >> CELL_SIZE;
+    CELL_SIZE = max(5, CELL_SIZE);
+
+    cout << "Enter start position (x y): ";
+    cin >> startPos.x >> startPos.y;
+    startPos.x = max(1, min(WIDTH - 2, startPos.x));
+    startPos.y = max(1, min(HEIGHT - 2, startPos.y));
+
+    cout << "Enter move delay in seconds: ";
+    cin >> moveDelay;
+    moveDelay = max(0.01f, moveDelay);
+}
+
+int main() {
+    srand(static_cast<unsigned>(time(0)));
+
+    handleInput();
+    initializeMaze();
+    makePath();
+
+    sf::RenderWindow window(sf::VideoMode(WIDTH * CELL_SIZE, HEIGHT * CELL_SIZE), "Maze Solver");
+    sf::CircleShape circle(CELL_SIZE / 4);
+    circle.setFillColor(sf::Color::Red);
+    circle.setOrigin(circle.getRadius(), circle.getRadius());
+
+    vector<Position> path = createPath();
+    int pathIndex = 0;
+    sf::Clock clock;
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed)
+                window.close();
+        }
+
+        if (clock.getElapsedTime().asSeconds() > moveDelay && pathIndex < path.size()) {
+            Position pos = path[pathIndex];
+            circle.setPosition(pos.x * CELL_SIZE + CELL_SIZE / 2, pos.y * CELL_SIZE + CELL_SIZE / 2);
+            pathIndex++;
+            clock.restart();
+        }
+
+        window.clear();
+        drawMaze(window);
+        window.draw(circle);
+        window.display();
+    }
+
+    return 0;
+}
